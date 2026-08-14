@@ -1,0 +1,25 @@
+{
+  "schema_version": "echoforge.eval-manifest/v1",
+  "dataset": {
+    "name": "AISHELL-1",
+    "source": "OpenSLR 33",
+    "source_url": "https://www.openslr.org/33/",
+    "license": "Apache-2.0 (verify current upstream terms before each run)",
+    "speaker_policy": "speaker-disjoint train/dev/test",
+    "audio_protocol": "16 kHz mono PCM16LE after decode",
+    "raw_audio_in_repository": false
+  },
+  "frozen": false,
+  "model": {
+    "streaming_backend": "not configured",
+    "streaming_revision": "",
+    "verifier_backend": "not configured",
+    "files": []
+  },
+  "normalization": "echoforge.zh-normalizer/v1",
+  "rows": [],
+  "notes": [
+    "Replace with a locally generated, hash-pinned manifest after license review.",
+    "Do not commit recordings, transcripts, or model weights."
+  ]
+}

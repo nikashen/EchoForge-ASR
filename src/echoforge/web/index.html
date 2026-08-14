@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b5f62">
+  <title>EchoForge-ASR | VoiceLab</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body data-view="live">
+  <a class="skip-link" href="#workspace">Skip to VoiceLab</a>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Primary navigation">
+      <div class="brand-mark"><span class="brand-pulse" aria-hidden="true"></span><span>EchoForge-ASR</span></div>
+      <p class="brand-subtitle">VOICE / EVIDENCE LAB</p>
+      <nav class="view-nav" aria-label="VoiceLab views">
+        <button class="nav-item is-active" data-view-target="live"><span class="nav-index">01</span><span>Live Lab</span></button>
+        <button class="nav-item" data-view-target="arena"><span class="nav-index">02</span><span>Robustness Arena</span></button>
+        <button class="nav-item" data-view-target="timeline"><span class="nav-index">03</span><span>Session Timeline</span></button>
+        <button class="nav-item" data-view-target="evidence"><span class="nav-index">04</span><span>Evidence</span></button>
+      </nav>
+      <div class="sidebar-footer">
+        <span class="status-dot" id="side-status-dot"></span>
+        <span id="side-status">Demo transport ready</span>
+      </div>
+    </aside>
+
+    <main id="workspace" class="workspace">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">CHINESE STREAMING ASR</p>
+          <h1 id="view-title">Live Lab</h1>
+        </div>
+        <div class="topbar-actions">
+          <span class="runtime-chip" id="runtime-chip">DETERMINISTIC REPLAY</span>
+          <button class="icon-button" id="reset-all" type="button" title="Reset lab" aria-label="Reset lab">↺</button>
+        </div>
+      </header>
+
+      <dl class="boundary-strip" aria-label="Evidence boundary">
+        <div><dt>Runtime</dt><dd id="boundary-runtime">Pages / deterministic replay</dd></div>
+        <div><dt>Audio handling</dt><dd>Ephemeral memory</dd></div>
+        <div><dt>Evidence scope</dt><dd id="boundary-scope">Interactive sample</dd></div>
+      </dl>
+
+      <section class="view is-active" id="view-live" data-view="live">
+        <section class="capture-strip panel-line">
+          <div class="source-control" role="group" aria-label="Audio source">
+            <button class="seg-button is-active" data-source="demo" type="button">Demo</button>
+            <button class="seg-button" data-source="mic" type="button" disabled>Mic</button>
+            <button class="seg-button" data-source="file" type="button" disabled>File</button>
+            <input id="file-input" type="file" accept="audio/*" hidden>
+          </div>
+          <div class="capture-actions">
+            <span class="capture-state" id="capture-state">IDLE</span>
+            <span class="timer" id="capture-timer">00:00.0</span>
+            <button class="primary-button" id="start-button" type="button"><span aria-hidden="true">●</span> Start</button>
+            <button class="secondary-button" id="stop-button" type="button" disabled><span aria-hidden="true">■</span> Stop</button>
+          </div>
+        </section>
+
+        <section class="hotword-strip panel-line" aria-label="Hotword injection">
+          <label for="hotword-input">Hotwords</label>
+          <input id="hotword-input" type="text" maxlength="256" placeholder="EchoForge, 图神经网络">
+          <button class="secondary-button" id="apply-hotwords" type="button">Apply</button>
+          <span id="hotword-status">No active override</span>
+        </section>
+
+        <section class="kpi-grid" aria-label="Session telemetry">
+          <article class="kpi"><span class="kpi-label">First partial</span><strong id="kpi-first-partial">—</strong><small>onset → text</small></article>
+          <article class="kpi"><span class="kpi-label">Endpoint → final</span><strong id="kpi-final-latency">—</strong><small>verifier path</small></article>
+          <article class="kpi"><span class="kpi-label">RTF</span><strong id="kpi-rtf">—</strong><small>compute / audio</small></article>
+          <article class="kpi"><span class="kpi-label">Stability</span><strong id="kpi-stability">—</strong><small>fixed v1 definition</small></article>
+        </section>
+
+        <div class="studio-grid">
+          <article class="panel waveform-panel">
+            <div class="panel-heading"><div><span class="panel-kicker">SIGNAL</span><h2>Waveform &amp; VAD</h2></div><span class="badge badge-muted" id="vad-badge">SILENCE</span></div>
+            <canvas id="waveform" width="900" height="280" aria-label="Audio waveform visualization"></canvas>
+            <div class="wave-meta"><span id="audio-meta">16 kHz · mono · PCM16LE</span><span id="vad-meta">RMS — · peak —</span></div>
+            <div class="wave-alt" id="wave-alt" role="status">No audio in the current session.</div>
+          </article>
+          <aside class="relay-column" aria-label="Model relay">
+            <article class="panel model-lane lane-fast">
+              <div class="lane-heading"><div><span class="lane-tag">FAST</span><h2>Streaming lane</h2></div><span class="lane-model" id="fast-model">deterministic fixture</span></div>
+              <p class="lane-text" id="fast-text">Waiting for speech…</p>
+              <div class="lane-foot"><span id="fast-revision">revision —</span><span id="fast-score">Decoder score unavailable</span></div>
+            </article>
+            <article class="panel model-lane lane-verify">
+              <div class="lane-heading"><div><span class="lane-tag">VERIFY</span><h2>Endpoint verifier</h2></div><span class="lane-model" id="verify-model">deterministic fixture</span></div>
+              <p class="lane-text" id="verify-text">Awaiting endpoint…</p>
+              <div class="lane-foot"><span id="verify-state">not started</span><span id="verify-latency">—</span></div>
+            </article>
+          </aside>
+        </div>
+
+        <section class="panel transcript-panel">
+          <div class="panel-heading"><div><span class="panel-kicker">REVISION LOG</span><h2>Self-healing transcript</h2></div><span class="badge badge-teal" id="revision-count">0 revisions</span></div>
+          <div class="partial-row"><span class="row-label">PARTIAL</span><span id="partial-transcript">—</span></div>
+          <ol class="final-list" id="final-transcript" aria-label="Confirmed transcript revisions"></ol>
+          <div class="repair-box" id="repair-box" hidden>
+            <div class="repair-heading"><span class="row-label">REPAIR DIFF</span><span id="repair-count">—</span></div>
+            <div class="repair-lines"><p><span class="diff-label fast">FAST</span><span id="repair-fast">—</span></p><p><span class="diff-label verify">VERIFY</span><span id="repair-verify">—</span></p><p><span class="diff-label repair">REPAIR</span><span id="repair-diff">—</span></p></div>
+          </div>
+          <div class="sr-only" id="final-announcer" aria-live="polite"></div>
+        </section>
+
+        <section class="panel timeline-preview">
+          <div class="panel-heading"><div><span class="panel-kicker">SESSION</span><h2>Timeline</h2></div><button class="text-button" data-view-target="timeline" type="button">Open timeline →</button></div>
+          <div class="timeline-track" id="timeline-track"><span class="timeline-empty">Start a demo session to populate the timeline.</span></div>
+        </section>
+      </section>
+
+      <section class="view" id="view-arena" data-view="arena">
+        <section class="view-intro"><span class="panel-kicker">CONTROLLED CHALLENGES</span><h2>Robustness Arena</h2><p>Preview a declared channel recipe against the deterministic fixture. This page does not run transformed audio through ASR.</p></section>
+        <div class="arena-grid">
+          <article class="panel challenge-controls">
+            <div class="panel-heading"><div><span class="panel-kicker">CHALLENGE</span><h2>Signal recipe</h2></div><span class="badge badge-muted" id="challenge-status">FIXTURE READY</span></div>
+            <label>Noise profile<select id="noise-profile"><option value="clean">Clean</option><option value="office">Office</option><option value="street">Street</option><option value="babble">Babble</option></select></label>
+            <label>SNR <output id="snr-output">10 dB</output><input id="snr-slider" type="range" min="0" max="30" value="10" step="5"></label>
+            <label>Channel<select id="channel-select"><option value="pcm">16 kHz PCM</option><option value="telephone">Telephone band</option></select></label>
+            <div class="challenge-actions"><button class="primary-button" id="run-challenge" type="button">Preview recipe</button><button class="secondary-button" id="mark-clean" type="button">Use clean pair</button></div>
+            <p class="field-note" id="challenge-note">Fixture preview only. Reference text is absent, so CER remains N/A.</p>
+          </article>
+          <article class="panel challenge-result">
+            <div class="panel-heading"><div><span class="panel-kicker">RESULT</span><h2>Paired observation</h2></div><span class="badge badge-amber" id="result-freshness">NOT RUN</span></div>
+            <div class="result-row"><span>Condition</span><strong id="result-condition">—</strong></div>
+            <div class="result-row"><span>Fixture streaming text</span><strong id="result-stream">—</strong></div>
+            <div class="result-row"><span>Fixture verifier text</span><strong id="result-verify">—</strong></div>
+            <div class="result-row"><span>CER (reference)</span><strong id="result-cer">N/A</strong></div>
+            <div class="result-row"><span>Artifact</span><code id="result-artifact">—</code></div>
+          </article>
+        </div>
+        <section class="panel matrix-panel"><div class="panel-heading"><div><span class="panel-kicker">MATRIX</span><h2>Frozen benchmark boundary</h2></div><span class="badge badge-muted">NOT YET EVALUATED</span></div><div class="empty-matrix">No public robustness metric is displayed until a frozen manifest and independent recomputation are available.</div></section>
+      </section>
+
+      <section class="view" id="view-timeline" data-view="timeline">
+        <section class="view-intro"><span class="panel-kicker">AUDITABLE PLAYBACK</span><h2>Session Timeline</h2><p>Every segment keeps its source, revision, and time span. Export contains provenance fields.</p></section>
+        <section class="panel timeline-panel"><div class="panel-heading"><div><span class="panel-kicker">EVENTS</span><h2 id="timeline-title">No session selected</h2></div><div class="export-actions"><button class="secondary-button" id="export-json" type="button">Export JSON</button><button class="secondary-button" id="export-srt" type="button">Export SRT</button><button class="secondary-button" id="export-vtt" type="button">Export VTT</button></div></div><ol class="event-list" id="event-list"></ol></section>
+      </section>
+
+      <section class="view" id="view-evidence" data-view="evidence">
+        <section class="view-intro"><span class="panel-kicker">REPRODUCIBILITY LEDGER</span><h2>Evidence</h2><p>Claims stay attached to the model, protocol, device, and artifact that produced them.</p></section>
+        <div class="evidence-grid">
+          <article class="panel evidence-card"><span class="panel-kicker">RUNTIME</span><h2>Interactive sample</h2><dl><div><dt>Backend</dt><dd id="evidence-backend">deterministic-protocol-fixture</dd></div><div><dt>Protocol</dt><dd>echoforge.ws/v1</dd></div><div><dt>Audio</dt><dd>16 kHz · mono · PCM16LE</dd></div><div><dt>Retention</dt><dd>ephemeral memory</dd></div></dl></article>
+          <article class="panel evidence-card"><span class="panel-kicker">EVALUATION</span><h2>Frozen benchmark</h2><dl><div><dt>Dataset</dt><dd>AISHELL-1 / OpenSLR 33</dd></div><div><dt>Normalizer</dt><dd>echoforge.zh-normalizer/v1</dd></div><div><dt>CER</dt><dd>not yet evaluated</dd></div><div><dt>RTF / p95</dt><dd>not yet evaluated</dd></div></dl></article>
+          <article class="panel evidence-card claim-card"><span class="panel-kicker">CLAIM BOUNDARY</span><h2>What this page proves</h2><ul><li>Protocol and state transitions are observable.</li><li>Revision provenance is preserved.</li><li>Deterministic replay is not a speech benchmark.</li><li>Decoder score is not calibrated probability.</li></ul></article>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

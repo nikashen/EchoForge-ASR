@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local model/data/evaluation outputs
+.cache/
+data/raw/*
+!data/raw/README.md
+data/processed/
+artifacts/
+reports/
+logs/
+site/
+
+# Local browser/test captures
+.tmp/
+.playwright/
+test-results/
+
+# Editors
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
