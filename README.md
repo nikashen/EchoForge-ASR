@@ -153,3 +153,4 @@ reruns the suite without downloading ASR models or evaluation audio.
 - [Security and resource limits](docs/SECURITY.md)
 - [Publication boundary](docs/PUBLICATION_BOUNDARY.md)
 - [Demo and publishing guide](docs/PUBLISHING.md)
+- [中文简历与面试案例](docs/RESUME_PROJECT_ZH.md)
