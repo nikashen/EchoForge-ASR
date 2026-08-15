@@ -154,7 +154,9 @@ def test_stream_lifecycle_and_registry_cleanup(client: TestClient) -> None:
         assert events[-1]["payload"]["verifier_degraded"] is False
 
         websocket.send_json({"type": "session.stop", "request_id": "stop-1"})
-        assert websocket.receive_json()["type"] == "session.stopped"
+        stopped = websocket.receive_json()
+        assert stopped["type"] == "session.stopped"
+        assert stopped["session_id"] == "demo-session"
     assert app.state.echoforge_runtime.registry.active_count() == 0
 
 

@@ -479,8 +479,11 @@ class _StreamConnection:
             await self.send_event("vad.event", {"event": vad_event.to_dict()})
         for revision in revisions:
             await self.send_event("transcript.revision", {"revision": revision.to_dict()})
-        await self.send_event("session.stopped", {"request_id": command.request_id})
-        await self._remove_session()
+        await self._remove_session(preserve_identity=True)
+        try:
+            await self.send_event("session.stopped", {"request_id": command.request_id})
+        finally:
+            self.session_id = None
         await self.close(1000, "normal closure")
         raise _GracefulStop()
 
@@ -534,10 +537,13 @@ class _StreamConnection:
             },
         )
 
-    async def _remove_session(self) -> None:
+    async def _remove_session(self, *, preserve_identity: bool = False) -> None:
         session_id = self.session_id
+        if self.session is not None:
+            self._generation = self.session.snapshot().generation
         self.session = None
-        self.session_id = None
+        if not preserve_identity:
+            self.session_id = None
         if session_id is not None:
             await asyncio.to_thread(self.runtime.registry.remove, session_id)
 
