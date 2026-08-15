@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from echoforge.asr.factory import build_backend_factories
+from echoforge.asr.preflight import run_preflight
 from echoforge.streaming.registry import SessionRegistry
 
 
@@ -24,6 +25,9 @@ def _parser() -> argparse.ArgumentParser:
     serve.add_argument("--port", type=int, default=8090)
     serve.add_argument("--model-dir", type=Path)
     serve.add_argument("--verifier-model", type=Path)
+    serve.add_argument(
+        "--model-type", choices=("zipformer", "paraformer", "transducer"), default="zipformer"
+    )
     serve.add_argument("--provider", choices=("cpu", "cuda"), default="cpu")
     serve.add_argument("--no-dual-pass", action="store_true")
     serve.add_argument("--allowed-origin", action="append", dest="allowed_origins")
@@ -31,6 +35,19 @@ def _parser() -> argparse.ArgumentParser:
     smoke = sub.add_parser("smoke", help="run a deterministic in-process protocol smoke test")
     smoke.add_argument("--seconds", type=float, default=0.5)
     smoke.add_argument("--json", action="store_true", dest="as_json")
+
+    preflight = sub.add_parser(
+        "preflight", help="check local real-ASR runtime prerequisites without loading weights"
+    )
+    preflight.add_argument("--backend", choices=("fake", "sherpa-onnx"), default="sherpa-onnx")
+    preflight.add_argument("--model-dir", type=Path)
+    preflight.add_argument("--verifier-model", type=Path)
+    preflight.add_argument(
+        "--model-type", choices=("zipformer", "paraformer", "transducer"), default="zipformer"
+    )
+    preflight.add_argument("--provider", choices=("cpu", "cuda"), default="cpu")
+    preflight.add_argument("--no-dual-pass", action="store_true")
+    preflight.add_argument("--json", action="store_true", dest="as_json")
     return parser
 
 
@@ -66,6 +83,7 @@ def _run_serve(args: argparse.Namespace) -> int:
             args.backend,
             model_dir=args.model_dir,
             verifier_model=args.verifier_model,
+            model_type=args.model_type,
             provider=args.provider,
             dual_pass=not args.no_dual_pass,
         )
@@ -115,6 +133,28 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "serve":
         return _run_serve(args)
+    if args.command == "preflight":
+        result = run_preflight(
+            args.backend,
+            model_dir=args.model_dir,
+            verifier_model=args.verifier_model,
+            model_type=args.model_type,
+            provider=args.provider,
+            dual_pass=not args.no_dual_pass,
+        )
+        checks = result["checks"]
+        if not isinstance(checks, list):
+            raise RuntimeError("preflight result has an invalid checks payload")
+        ok = bool(result["ok"])
+        print(
+            json.dumps(result, ensure_ascii=False, sort_keys=True)
+            if args.as_json
+            else "EchoForge static preflight "
+            + ("OK" if ok else "FAILED")
+            + ": "
+            + "; ".join(f"{check['name']}={check['detail']}" for check in checks)
+        )
+        return 0 if ok else 1
     return 2
 
 

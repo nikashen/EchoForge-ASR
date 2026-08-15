@@ -71,6 +71,13 @@ def test_faster_whisper_requires_explicit_local_model(tmp_path) -> None:
     verifier = FasterWhisperFinalizer(tmp_path / "missing")
     with pytest.raises(FasterWhisperUnavailable, match="local Whisper model"):
         verifier.transcribe(np.zeros(320, dtype=np.float32), 16_000)
+    incomplete = tmp_path / "incomplete"
+    incomplete.mkdir()
+    (incomplete / "model.bin").write_bytes(b"fixture")
+    (incomplete / "config.json").write_text("{}", encoding="utf-8")
+    verifier = FasterWhisperFinalizer(incomplete)
+    with pytest.raises(FasterWhisperUnavailable, match="tokenizer.json"):
+        verifier.transcribe(np.zeros(320, dtype=np.float32), 16_000)
 
 
 def test_faster_whisper_adapter_uses_endpoint_segments(tmp_path, monkeypatch) -> None:

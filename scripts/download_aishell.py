@@ -31,7 +31,7 @@ def _sha256(path: Path) -> str:
 
 
 def _download(url: str, destination: Path) -> tuple[int, str]:
-    request = urllib.request.Request(url, headers={"User-Agent": "EchoForge-ASR/0.1"})
+    request = urllib.request.Request(url, headers={"User-Agent": "EchoForge-ASR/0.1.1"})
     with urllib.request.urlopen(request, timeout=60) as response, destination.open("wb") as handle:
         total = 0
         while block := response.read(1024 * 1024):
@@ -41,7 +41,7 @@ def _download(url: str, destination: Path) -> tuple[int, str]:
 
 
 def _remote_sha256(url: str) -> str:
-    request = urllib.request.Request(url, headers={"User-Agent": "EchoForge-ASR/0.1"})
+    request = urllib.request.Request(url, headers={"User-Agent": "EchoForge-ASR/0.1.1"})
     digest = hashlib.sha256()
     with urllib.request.urlopen(request, timeout=60) as response:
         for block in iter(lambda: response.read(1024 * 1024), b""):

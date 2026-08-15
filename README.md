@@ -104,6 +104,25 @@ model directories:
   --port 8090
 ```
 
+Run the fail-closed prerequisite check before starting a real backend. It
+checks the model files and optional runtime imports without loading weights:
+
+```powershell
+.\.venv\Scripts\echoforge.exe preflight `
+  --backend sherpa-onnx `
+  --model-dir D:\models\sherpa-zipformer `
+  --verifier-model D:\models\faster-whisper-small `
+  --json
+```
+
+Use `--no-dual-pass` when the endpoint verifier is intentionally disabled.
+`preflight` returning `OK` means the local paths and imports satisfy the
+static contract; it is not a speech-quality benchmark and does not replace a
+short end-to-end audio probe. JSON output records `verification_level=static`
+and `model_load_verified=false`; CUDA compatibility remains explicitly
+unverified until that probe succeeds. The readiness endpoint separately
+reports service lifecycle, static preflight, and streaming-model load status.
+
 CPU is the default. GPU use is opt-in and depends on the installed sherpa wheel,
 CUDA/cuDNN compatibility, and available VRAM. `--provider cuda` selects the
 sherpa streaming runtime; the current faster-whisper endpoint verifier is
@@ -141,7 +160,7 @@ node --check src/echoforge/web/pcm-worklet.js
 .\.venv\Scripts\python.exe -m build
 ```
 
-The current local verification is **116 tests passed**; the standard CI matrix
+The current local verification is **119 tests passed**; the standard CI matrix
 reruns the suite without downloading ASR models or evaluation audio.
 
 ## Documentation

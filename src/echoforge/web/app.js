@@ -781,8 +781,11 @@
       state.runtime.localApi = true;
       state.runtime.backend = payload.backend;
       document.querySelectorAll('[data-source="mic"], [data-source="file"]').forEach((button) => { button.disabled = false; });
-      $('runtime-chip').textContent = payload.backend === 'deterministic-fake' ? 'LOCAL API · FIXTURE' : 'LOCAL API · LIVE';
-      $('boundary-runtime').textContent = `Local API / ${payload.backend}`;
+      const runtimeLabel = payload.backend === 'deterministic-fake'
+        ? 'LOCAL API · FIXTURE'
+        : (payload.streaming_model_load_verified ? 'LOCAL API · MODEL ACTIVE' : 'LOCAL API · STATIC PREFLIGHT');
+      $('runtime-chip').textContent = runtimeLabel;
+      $('boundary-runtime').textContent = `Local API / ${payload.backend} / ${payload.model_status}`;
       $('evidence-backend').textContent = payload.backend;
       setStatus(`Local API · ${payload.backend}`);
     } catch (_error) {

@@ -20,6 +20,63 @@ from echoforge.contracts.domain import Hypothesis, RevisionStage
 
 FloatAudio = NDArray[np.float32]
 
+TOKENS_CANDIDATES = ("tokens.txt", "tokens.txt.gz")
+ENCODER_CANDIDATES = (
+    "encoder.int8.onnx",
+    "encoder.onnx",
+    "encoder-*.int8.onnx",
+    "encoder-*.onnx",
+    "encoder_*.int8.onnx",
+    "encoder_*.onnx",
+)
+DECODER_CANDIDATES = (
+    "decoder.int8.onnx",
+    "decoder.onnx",
+    "decoder-*.int8.onnx",
+    "decoder-*.onnx",
+    "decoder_*.int8.onnx",
+    "decoder_*.onnx",
+)
+JOINER_CANDIDATES = (
+    "joiner.int8.onnx",
+    "joiner.onnx",
+    "joiner-*.int8.onnx",
+    "joiner-*.onnx",
+    "joiner_*.int8.onnx",
+    "joiner_*.onnx",
+)
+
+
+def resolve_model_file(
+    model_dir: Path,
+    value: str | None,
+    *,
+    candidates: tuple[str, ...],
+) -> Path | None:
+    """Resolve an explicit or uniquely matched model file inside ``model_dir``."""
+
+    root = Path(model_dir).expanduser().resolve()
+    if value:
+        path = (root / value).resolve()
+        if root not in path.parents:
+            raise FileNotFoundError(f"sherpa model file escapes model_dir: {value}")
+        if not path.is_file():
+            raise FileNotFoundError(f"sherpa model file does not exist: {path}")
+        return path
+    for candidate in candidates:
+        matches = (
+            sorted(path for path in root.glob(candidate) if path.is_file())
+            if any(marker in candidate for marker in "*?[")
+            else [root / candidate]
+        )
+        matches = [path for path in matches if path.is_file()]
+        if len(matches) > 1:
+            names = ", ".join(path.name for path in matches)
+            raise ValueError(f"ambiguous sherpa model files for {candidate}: {names}")
+        if matches:
+            return matches[0]
+    return None
+
 
 @dataclass(frozen=True, slots=True)
 class SherpaOnnxConfig:
@@ -53,16 +110,8 @@ class SherpaOnnxConfig:
         object.__setattr__(self, "model_dir", model_dir)
 
     def resolve(self, value: str | None, *, candidates: tuple[str, ...]) -> str | None:
-        if value:
-            path = self.model_dir / value
-            if not path.is_file():
-                raise FileNotFoundError(f"sherpa model file does not exist: {path}")
-            return str(path)
-        for name in candidates:
-            path = self.model_dir / name
-            if path.is_file():
-                return str(path)
-        return None
+        path = resolve_model_file(self.model_dir, value, candidates=candidates)
+        return str(path) if path is not None else None
 
 
 class SherpaOnnxUnavailable(RuntimeError):
@@ -119,7 +168,7 @@ class SherpaOnnxStreamingRecognizer:
         """Build common Zipformer/Paraformer configurations across sherpa versions."""
 
         cfg = self.config
-        tokens = cfg.resolve(cfg.tokens, candidates=("tokens.txt", "tokens.txt.gz"))
+        tokens = cfg.resolve(cfg.tokens, candidates=TOKENS_CANDIDATES)
         if tokens is None:
             raise FileNotFoundError("could not resolve tokens.txt in model_dir")
         recognizer_cls = getattr(module, "OnlineRecognizer", None)
@@ -128,11 +177,11 @@ class SherpaOnnxStreamingRecognizer:
         if cfg.model_type == "paraformer":
             encoder = cfg.resolve(
                 cfg.paraformer_encoder or cfg.encoder,
-                candidates=("encoder.int8.onnx", "encoder.onnx"),
+                candidates=ENCODER_CANDIDATES,
             )
             decoder = cfg.resolve(
                 cfg.decoder,
-                candidates=("decoder.int8.onnx", "decoder.onnx"),
+                candidates=DECODER_CANDIDATES,
             )
             if encoder is None or decoder is None:
                 raise FileNotFoundError("could not resolve Paraformer encoder/decoder in model_dir")
@@ -147,9 +196,9 @@ class SherpaOnnxStreamingRecognizer:
                 provider=cfg.provider,
             )
         else:
-            encoder = cfg.resolve(cfg.encoder, candidates=("encoder.int8.onnx", "encoder.onnx"))
-            decoder = cfg.resolve(cfg.decoder, candidates=("decoder.int8.onnx", "decoder.onnx"))
-            joiner = cfg.resolve(cfg.joiner, candidates=("joiner.int8.onnx", "joiner.onnx"))
+            encoder = cfg.resolve(cfg.encoder, candidates=ENCODER_CANDIDATES)
+            decoder = cfg.resolve(cfg.decoder, candidates=DECODER_CANDIDATES)
+            joiner = cfg.resolve(cfg.joiner, candidates=JOINER_CANDIDATES)
             if not all((encoder, decoder, joiner)):
                 raise FileNotFoundError("could not resolve transducer encoder/decoder/joiner")
             return recognizer_cls.from_transducer(
@@ -249,3 +298,15 @@ class SherpaOnnxStreamingRecognizer:
                 raise SherpaOnnxUnavailable(
                     "this sherpa build does not support hotword streams"
                 ) from exc
+
+
+__all__ = [
+    "DECODER_CANDIDATES",
+    "ENCODER_CANDIDATES",
+    "JOINER_CANDIDATES",
+    "TOKENS_CANDIDATES",
+    "SherpaOnnxConfig",
+    "SherpaOnnxStreamingRecognizer",
+    "SherpaOnnxUnavailable",
+    "resolve_model_file",
+]

@@ -6,11 +6,18 @@ from echoforge.api.app import create_app
 from echoforge.cli import main
 
 
-def test_cli_smoke_reports_revision_chain(capsys) -> None:
+def test_cli_smoke_and_preflight_report_contracts(capsys) -> None:
     assert main(["smoke", "--json"]) == 0
     output = capsys.readouterr().out
     assert '"dual_pass_final"' in output
     assert '"deterministic-fake"' in output
+    assert main(["preflight", "--backend", "fake", "--json"]) == 0
+    output = capsys.readouterr().out
+    assert '"verification_level": "fixture"' in output
+    assert main(["preflight", "--backend", "sherpa-onnx", "--json"]) == 1
+    output = capsys.readouterr().out
+    assert '"verification_level": "static"' in output
+    assert '"model_load_verified": false' in output
 
 
 def test_app_serves_voice_lab_static_shell() -> None:

@@ -20,6 +20,11 @@ from numpy.typing import NDArray
 from echoforge.contracts.domain import Hypothesis, RevisionStage
 
 FloatAudio = NDArray[np.float32]
+LOCAL_MODEL_REQUIRED_FILES = ("model.bin", "config.json", "tokenizer.json")
+
+
+def missing_local_model_files(path: Path) -> tuple[str, ...]:
+    return tuple(name for name in LOCAL_MODEL_REQUIRED_FILES if not (path / name).is_file())
 
 
 class FasterWhisperUnavailable(RuntimeError):
@@ -62,10 +67,16 @@ class FasterWhisperFinalizer:
         if self._model is not None:
             return
         path = Path(self.model_path).expanduser()
-        if not path.exists() and not self.allow_download:
-            raise FasterWhisperUnavailable(
-                f"local Whisper model not found: {path}; set allow_download=True explicitly"
-            )
+        if not self.allow_download and self._model_factory is None:
+            if not path.is_dir():
+                raise FasterWhisperUnavailable(
+                    f"local Whisper model not found: {path}; set allow_download=True explicitly"
+                )
+            missing = missing_local_model_files(path)
+            if missing:
+                raise FasterWhisperUnavailable(
+                    "local Whisper model is incomplete; missing: " + ", ".join(missing)
+                )
         try:
             module = importlib.import_module("faster_whisper")
         except (ImportError, OSError) as exc:
@@ -85,6 +96,7 @@ class FasterWhisperFinalizer:
                 device=self.device,
                 compute_type=self.compute_type,
                 cpu_threads=self.cpu_threads,
+                local_files_only=not self.allow_download,
             )
         self._model = model
 
@@ -135,3 +147,11 @@ class FasterWhisperFinalizer:
             audio_start_ms=max(0, start_ms),
             audio_end_ms=max(max(0, start_ms), end_ms),
         )
+
+
+__all__ = [
+    "LOCAL_MODEL_REQUIRED_FILES",
+    "FasterWhisperFinalizer",
+    "FasterWhisperUnavailable",
+    "missing_local_model_files",
+]

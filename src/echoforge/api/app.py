@@ -53,6 +53,7 @@ def create_app(
         recognizer_factory=recognizer_factory,
         finalizer_factory=finalizer_factory,
         config=config,
+        startup_ready=selected.static_preflight_ok,
     )
 
 

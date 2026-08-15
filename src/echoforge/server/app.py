@@ -53,7 +53,9 @@ class EchoForgeRuntime:
     recognizer_factory: RecognizerFactory
     finalizer_factory: FinalizerFactory
     config: ServerConfig
+    startup_ready: bool = True
     ready: bool = False
+    streaming_model_load_verified: bool = False
     connections: set[Any] = field(default_factory=set)
     connection_tasks: set[asyncio.Task[Any]] = field(default_factory=set)
 
@@ -423,6 +425,8 @@ class _StreamConnection:
             raise _ConnectionFailure("STREAMING_BACKEND_FAILED", str(exc), 1011) from exc
         except ValueError as exc:
             raise _ConnectionFailure("AUDIO_PAYLOAD_INVALID", str(exc), 1003) from exc
+        if self.config.backend_name != "deterministic-fake":
+            self.runtime.streaming_model_load_verified = True
         if not result.duplicate:
             for vad_event in self.vad.process(samples):
                 await self.send_event("vad.event", {"event": vad_event.to_dict()})
@@ -586,6 +590,7 @@ def create_app(
     finalizer_factory: FinalizerFactory | None = None,
     config: ServerConfig | None = None,
     allowed_origins: Iterable[str] | None = None,
+    startup_ready: bool = True,
 ) -> FastAPI:
     """Create an isolated FastAPI application with injected ASR factories."""
 
@@ -614,11 +619,12 @@ def create_app(
         recognizer_factory=recognizer_factory or _default_recognizer_factory,
         finalizer_factory=finalizer_factory or _default_finalizer_factory,
         config=selected_config,
+        startup_ready=startup_ready,
     )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        runtime.ready = True
+        runtime.ready = runtime.startup_ready
         try:
             yield
         finally:
@@ -661,10 +667,29 @@ def create_app(
     @app.get("/api/v1/readiness")
     @app.get("/readiness")
     async def readiness() -> JSONResponse:
+        is_fixture = selected_config.backend_name == "deterministic-fake"
+        model_status = (
+            "fixture"
+            if is_fixture
+            else (
+                "static_preflight_failed"
+                if not runtime.startup_ready
+                else (
+                    "streaming_load_verified"
+                    if runtime.streaming_model_load_verified
+                    else "static_preflight_passed"
+                )
+            )
+        )
         payload = {
             "status": "ready" if runtime.ready else "not_ready",
             "service": "echoforge-asr",
             "backend": selected_config.backend_name,
+            "static_preflight": (
+                "not_required" if is_fixture else ("passed" if runtime.startup_ready else "failed")
+            ),
+            "model_status": model_status,
+            "streaming_model_load_verified": runtime.streaming_model_load_verified,
             "active_sessions": runtime.registry.active_count(),
             "max_sessions": selected_config.max_sessions,
         }

@@ -43,13 +43,29 @@ def frame(sequence: int, count: int = 3200) -> bytes:
     return pack_audio_frame(sequence, float32_to_pcm16le(np.zeros(count, dtype=np.float32)))
 
 
-def test_health_and_readiness(client: TestClient) -> None:
+def test_health_and_readiness(client: TestClient, config: ServerConfig) -> None:
     health = client.get("/api/v1/health")
     assert health.status_code == 200
     assert health.json()["status"] == "ok"
     readiness = client.get("/api/v1/readiness")
     assert readiness.status_code == 200
     assert readiness.json()["status"] == "ready"
+    assert readiness.json()["model_status"] == "fixture"
+    assert readiness.json()["streaming_model_load_verified"] is False
+
+    not_ready_app = create_app(config=config, startup_ready=False)
+    with TestClient(not_ready_app) as not_ready_client:
+        not_ready = not_ready_client.get("/api/v1/readiness")
+        assert not_ready.status_code == 503
+        assert not_ready.json()["status"] == "not_ready"
+
+    real_config = ServerConfig(allowed_origins=(ORIGIN,), backend_name="sherpa-onnx")
+    failed_real_app = create_app(config=real_config, startup_ready=False)
+    with TestClient(failed_real_app) as failed_real_client:
+        failed_real = failed_real_client.get("/api/v1/readiness")
+        assert failed_real.status_code == 503
+        assert failed_real.json()["static_preflight"] == "failed"
+        assert failed_real.json()["model_status"] == "static_preflight_failed"
 
 
 @pytest.mark.parametrize(
