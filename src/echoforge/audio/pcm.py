@@ -93,7 +93,7 @@ def resample_mono(
     if target_rate < 8_000 or target_rate > 48_000:
         raise ValueError("target_rate is outside the supported range")
     if source_rate == target_rate:
-        return cast(FloatAudio, array.copy())
+        return np.copy(array)
     factor = gcd(source_rate, target_rate)
     result = resample_poly(array.astype(np.float64), target_rate // factor, source_rate // factor)
     if result.size == 0 or not np.all(np.isfinite(result)):

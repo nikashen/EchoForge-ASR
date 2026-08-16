@@ -164,6 +164,8 @@ def energy_dbfs(samples: NDArray[np.float32] | list[float]) -> float:
 class EnergyVAD:
     """Deterministic frame-energy VAD with hysteresis and debounce."""
 
+    _pending: FloatAudio
+
     def __init__(self, config: EnergyVadConfig | None = None) -> None:
         self.config = config or EnergyVadConfig()
         self.reset()
