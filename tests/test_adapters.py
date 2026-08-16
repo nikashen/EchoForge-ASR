@@ -6,6 +6,7 @@ import types
 import numpy as np
 import pytest
 
+import echoforge.asr.factory as factory_module
 from echoforge.asr.factory import build_backend_factories
 from echoforge.asr.faster_whisper import FasterWhisperFinalizer, FasterWhisperUnavailable
 from echoforge.asr.sherpa_onnx import SherpaOnnxConfig, SherpaOnnxStreamingRecognizer
@@ -75,9 +76,37 @@ def test_faster_whisper_requires_explicit_local_model(tmp_path) -> None:
     incomplete.mkdir()
     (incomplete / "model.bin").write_bytes(b"fixture")
     (incomplete / "config.json").write_text("{}", encoding="utf-8")
+    (incomplete / "vocabulary.json").write_text("{}", encoding="utf-8")
     verifier = FasterWhisperFinalizer(incomplete)
     with pytest.raises(FasterWhisperUnavailable, match="tokenizer.json"):
         verifier.transcribe(np.zeros(320, dtype=np.float32), 16_000)
+
+
+def test_faster_whisper_disables_implicit_downloads(tmp_path, monkeypatch) -> None:
+    model_path = tmp_path / "whisper-model"
+    model_path.mkdir()
+    (model_path / "model.bin").write_bytes(b"fixture")
+    (model_path / "config.json").write_text("{}", encoding="utf-8")
+    (model_path / "tokenizer.json").write_text("{}", encoding="utf-8")
+    (model_path / "vocabulary.txt").write_text("fixture", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    class Model:
+        def __init__(self, path: str, **kwargs: object) -> None:
+            captured["path"] = path
+            captured.update(kwargs)
+
+        def transcribe(self, _audio, **_kwargs):
+            return iter(()), object()
+
+    module = types.SimpleNamespace(WhisperModel=Model)
+    monkeypatch.setitem(sys.modules, "faster_whisper", module)
+
+    verifier = FasterWhisperFinalizer(model_path)
+    verifier.transcribe(np.zeros(320, dtype=np.float32), 16_000)
+
+    assert captured["path"] == str(model_path)
+    assert captured["local_files_only"] is True
 
 
 def test_faster_whisper_adapter_uses_endpoint_segments(tmp_path, monkeypatch) -> None:
@@ -110,3 +139,42 @@ def test_fake_factory_remains_deterministic_and_no_optional_imports() -> None:
     factories = build_backend_factories("fake")
     assert factories.name == "deterministic-fake"
     assert factories.evidence["streaming_model"] == "deterministic-protocol-fixture"
+
+
+def test_real_factory_preserves_static_only_verification(monkeypatch, tmp_path) -> None:
+    model_dir = tmp_path / "stream"
+    model_dir.mkdir()
+    monkeypatch.setattr(
+        factory_module,
+        "run_preflight",
+        lambda *_args, **_kwargs: {
+            "ok": True,
+            "static_requirements_ok": True,
+            "verification_level": "static",
+            "model_load_verified": False,
+            "checks": [
+                {
+                    "name": "cuda_compatibility",
+                    "ok": None,
+                    "status": "not_verified",
+                    "detail": "runtime probe required",
+                }
+            ],
+        },
+    )
+
+    factories = build_backend_factories(
+        "sherpa-onnx",
+        model_dir=model_dir,
+        provider="cuda",
+        dual_pass=False,
+    )
+
+    assert factories.static_preflight_ok is True
+    assert factories.evidence["preflight"] == "static_requirements_passed"
+    assert factories.evidence["verification_level"] == "static"
+    assert factories.evidence["model_load_verified"] == "false"
+    recognizer = factories.recognizer_factory()
+    assert isinstance(recognizer, SherpaOnnxStreamingRecognizer)
+    assert recognizer.config.provider == "cuda"
+    assert recognizer._recognizer is None  # type: ignore[attr-defined]

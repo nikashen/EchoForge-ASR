@@ -116,12 +116,24 @@ checks the model files and optional runtime imports without loading weights:
 ```
 
 Use `--no-dual-pass` when the endpoint verifier is intentionally disabled.
-`preflight` returning `OK` means the local paths and imports satisfy the
-static contract; it is not a speech-quality benchmark and does not replace a
-short end-to-end audio probe. JSON output records `verification_level=static`
-and `model_load_verified=false`; CUDA compatibility remains explicitly
-unverified until that probe succeeds. The readiness endpoint separately
-reports service lifecycle, static preflight, and streaming-model load status.
+`preflight` returning `PASSED` means only that local paths, required model
+artifacts, and imports satisfy the static contract; it is not a speech-quality
+benchmark and does not replace a short end-to-end audio probe. JSON output
+records `verification_level=static` and `model_load_verified=false`. A CUDA
+selection emits a `cuda_compatibility` check with `status=not_verified` (and
+`ok=null`) instead of a misleading green check until that probe succeeds.
+The readiness endpoint keeps service lifecycle separate: for a real backend,
+`verification_level=static` and
+`model_verification_status=static_requirements_passed_model_unverified` still
+mean no model load has been observed. The legacy `model_status` field remains
+for API compatibility. Only successful streaming inference changes the
+streaming-specific load flag; it does not prove endpoint-verifier load or ASR
+quality.
+
+The local faster-whisper contract requires `model.bin`, `config.json`,
+`tokenizer.json`, and one of `vocabulary.json` / `vocabulary.txt`. With the
+default no-download policy, the adapter also passes `local_files_only=True` to
+faster-whisper so a missing artifact cannot silently trigger network access.
 
 CPU is the default. GPU use is opt-in and depends on the installed sherpa wheel,
 CUDA/cuDNN compatibility, and available VRAM. `--provider cuda` selects the
@@ -129,16 +141,99 @@ sherpa streaming runtime; the current faster-whisper endpoint verifier is
 constructed on CPU. Model weights remain outside Git, Releases, and browser
 requests.
 
+On Windows, the verifier extra pins `ctranslate2==4.5.0`. Versions 4.6.3 and
+4.8.1 caused a reproducible native access violation while loading the pinned
+`faster-whisper-small` CTranslate2 model on the validated Windows host; static
+preflight rejects a different Windows version instead of allowing the service
+to crash during the first endpoint revision.
+
 ## Evaluation
 
-Review the current OpenSLR terms before any AISHELL-1 download. The downloader
-requires explicit acknowledgement and records archive hashes locally:
+The evaluation commands are repository workflows run from a source checkout.
+Review the current OpenSLR terms before downloading AISHELL-1. A dry-run writes
+only a plan; a real download writes hash-bound receipts and a completed local
+manifest:
 
 ```powershell
-.\.venv\Scripts\python.exe scripts/download_aishell.py --accept-license --dry-run
-# This intentionally exits with code 2 until the manifest is frozen and complete.
-.\.venv\Scripts\python.exe scripts/evaluate_manifest.py configs/aishell1.manifest.example.json
+python scripts/download_aishell.py `
+  --accept-license --dry-run `
+  --output F:\ASR\data\aishell1-download
+python scripts/download_aishell.py `
+  --accept-license `
+  --output F:\ASR\data\aishell1-download
 ```
+
+OpenSLR's audio archive contains nested per-speaker archives. Download-time
+generic extraction is disabled. The dedicated extractor verifies both tar
+layers, rejects links/devices/traversal, checks every WAV, and atomically
+publishes a hash-bound tree. This limited command is suitable for an
+**unscored compatibility smoke only**:
+
+```powershell
+python scripts/extract_aishell.py `
+  --output F:\ASR\data\aishell1-dev-smoke `
+  --download-manifest F:\ASR\data\aishell1-download\download_manifest.json `
+  --audio-archive F:\ASR\data\aishell1-download\audio.tgz `
+  --resources-archive F:\ASR\data\aishell1-download\resources.tgz `
+  --split dev `
+  --speaker-limit-per-split 1
+python scripts/prepare_aishell_manifest.py `
+  --output F:\ASR\manifests\aishell-dev-smoke-prepared.json `
+  --extraction-root F:\ASR\data\aishell1-dev-smoke `
+  --wav-root F:\ASR\data\aishell1-dev-smoke\wav `
+  --transcript F:\ASR\data\aishell1-dev-smoke\transcript\aishell_transcript_v0.8.txt `
+  --download-manifest F:\ASR\data\aishell1-download\download_manifest.json `
+  --split dev `
+  --speaker-limit 1 `
+  --utterances-per-speaker 1
+```
+
+Preparation verifies the extraction marker before and after scanning the tree,
+uses the same bytes for WAV/transcript hashes, and emits an unfrozen manifest.
+The runner checks model artifacts before loading and after inference, rejects
+truncated audio and verifier degradation, and never overwrites evidence:
+
+```powershell
+python scripts/run_manifest_asr.py F:\ASR\manifests\aishell-dev-smoke-prepared.json `
+  --output F:\ASR\manifests\aishell-dev-smoke-unscored.json `
+  --audio-root F:\ASR\data\aishell1-dev-smoke\wav `
+  --backend sherpa-onnx `
+  --model-dir F:\ASR\models\sherpa-streaming-zh `
+  --verifier-model F:\ASR\models\faster-whisper-small `
+  --streaming-revision sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30 `
+  --verifier-revision Systran/faster-whisper-small@536b0662 `
+  --warmup-audio F:\ASR\smoke\warmup.wav
+python scripts/evaluate_manifest.py F:\ASR\manifests\aishell-dev-smoke-unscored.json
+```
+
+That evaluator invocation intentionally exits `2` with
+`status=not_yet_evaluated`: limited extraction/selection is never authorized.
+For an authorized benchmark, extract one complete dev or test split without a
+speaker limit, prepare it without row limits using `--authorize-evaluation`
+and a pre-registered `--protocol-id`, and use separate warm-up audio. The
+runner also requires explicit reviewed model-weight provenance for every
+active model:
+
+```text
+--streaming-source-url <immutable HTTPS source>
+--streaming-license <reviewed weight license>
+--confirm-streaming-license-reviewed
+--verifier-source-url <immutable HTTPS source>
+--verifier-license <reviewed weight license>
+--confirm-verifier-license-reviewed
+```
+
+Authorization currently supports CPU evidence only. Do not pass review flags
+unless the weight licenses—not merely runtime software licenses—were
+independently checked. The locally validated sherpa archive has no separate
+weight-license file, so this repository keeps its real-model runs
+`evaluation_authorized=false` and publishes no CER, RTF, or latency number.
+
+An authorized report includes normalized CER sufficient statistics plus
+sanitized dataset/model/artifact/package/device/warm-up/timing provenance; it
+never includes row text or audio paths. Runner timing is offline, unpaced,
+sequential `perf_counter` wall time. `first_partial_wall_ms` is not real-time
+playback TTFT, and the resulting RTF/latencies are not production SLAs.
 
 The example evaluator returns `not_yet_evaluated` because it is intentionally
 unfrozen and contains no rows. A report is emitted only when IDs, audio hashes,
@@ -160,8 +255,9 @@ node --check src/echoforge/web/pcm-worklet.js
 .\.venv\Scripts\python.exe -m build
 ```
 
-The current local verification is **119 tests passed**; the standard CI matrix
-reruns the suite without downloading ASR models or evaluation audio.
+The current local verification is **264 tests passed**. CI covers Linux Python
+3.10/3.11/3.12, a Windows verifier/CT2 4.5.0 contract job, wheel imports, Pages,
+and frontend syntax without downloading model weights or evaluation audio.
 
 ## Documentation
 

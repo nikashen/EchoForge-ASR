@@ -783,9 +783,11 @@
       document.querySelectorAll('[data-source="mic"], [data-source="file"]').forEach((button) => { button.disabled = false; });
       const runtimeLabel = payload.backend === 'deterministic-fake'
         ? 'LOCAL API · FIXTURE'
-        : (payload.streaming_model_load_verified ? 'LOCAL API · MODEL ACTIVE' : 'LOCAL API · STATIC PREFLIGHT');
+        : (payload.streaming_model_load_verified
+          ? 'LOCAL API · STREAMING MODEL LOADED'
+          : 'LOCAL API · STATIC ONLY / MODEL UNVERIFIED');
       $('runtime-chip').textContent = runtimeLabel;
-      $('boundary-runtime').textContent = `Local API / ${payload.backend} / ${payload.model_status}`;
+      $('boundary-runtime').textContent = `Local API / ${payload.backend} / ${payload.model_verification_status || payload.model_status}`;
       $('evidence-backend').textContent = payload.backend;
       setStatus(`Local API · ${payload.backend}`);
     } catch (_error) {

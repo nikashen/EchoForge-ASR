@@ -36,9 +36,11 @@ Before creating a release:
    manifests out of Git, source distributions, wheels, and Pages artifacts.
 3. Re-check the current OpenSLR/AISHELL-1 terms before downloading or
    redistributing any evaluation data.
-4. Publish CER or latency numbers only with a frozen, speaker-disjoint manifest,
-   model/file hashes, normalization version, and a report that another operator
-   can recompute.
+4. Publish CER or timing numbers only for one complete, hash-bound dev/test
+   split with no selection limits, separate warm-up audio, immutable model/file
+   hashes, reviewed model-weight licenses, normalization version, and a
+   sanitized report that another operator can recompute from the private frozen
+   rows. Offline unpaced runner timings are not production TTFT or SLAs.
 5. Tag the release with the same version recorded in `pyproject.toml`; attach
    only build artifacts whose provenance was reviewed.
 

@@ -55,21 +55,30 @@ def resolve_model_file(
 ) -> Path | None:
     """Resolve an explicit or uniquely matched model file inside ``model_dir``."""
 
-    root = Path(model_dir).expanduser().resolve()
+    raw_root = Path(model_dir).expanduser()
+    if raw_root.is_symlink():
+        raise FileNotFoundError(f"sherpa model_dir must not be a symbolic link: {raw_root}")
+    root = raw_root.resolve()
+
+    def checked(path: Path) -> Path:
+        if path.is_symlink():
+            raise FileNotFoundError(f"sherpa model file must not be a symbolic link: {path}")
+        resolved = path.resolve()
+        if root not in resolved.parents:
+            raise FileNotFoundError(f"sherpa model file escapes model_dir: {path.name}")
+        if not resolved.is_file():
+            raise FileNotFoundError(f"sherpa model file does not exist: {resolved}")
+        return resolved
+
     if value:
-        path = (root / value).resolve()
-        if root not in path.parents:
-            raise FileNotFoundError(f"sherpa model file escapes model_dir: {value}")
-        if not path.is_file():
-            raise FileNotFoundError(f"sherpa model file does not exist: {path}")
-        return path
+        return checked(root / value)
     for candidate in candidates:
-        matches = (
-            sorted(path for path in root.glob(candidate) if path.is_file())
+        raw_matches = (
+            sorted(root.glob(candidate))
             if any(marker in candidate for marker in "*?[")
             else [root / candidate]
         )
-        matches = [path for path in matches if path.is_file()]
+        matches = [checked(path) for path in raw_matches if path.is_symlink() or path.is_file()]
         if len(matches) > 1:
             names = ", ".join(path.name for path in matches)
             raise ValueError(f"ambiguous sherpa model files for {candidate}: {names}")

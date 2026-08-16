@@ -51,6 +51,8 @@ def test_health_and_readiness(client: TestClient, config: ServerConfig) -> None:
     assert readiness.status_code == 200
     assert readiness.json()["status"] == "ready"
     assert readiness.json()["model_status"] == "fixture"
+    assert readiness.json()["model_verification_status"] == "fixture"
+    assert readiness.json()["verification_level"] == "fixture"
     assert readiness.json()["streaming_model_load_verified"] is False
 
     not_ready_app = create_app(config=config, startup_ready=False)
@@ -65,7 +67,36 @@ def test_health_and_readiness(client: TestClient, config: ServerConfig) -> None:
         failed_real = failed_real_client.get("/api/v1/readiness")
         assert failed_real.status_code == 503
         assert failed_real.json()["static_preflight"] == "failed"
+        assert failed_real.json()["verification_level"] == "none"
         assert failed_real.json()["model_status"] == "static_preflight_failed"
+        assert failed_real.json()["model_verification_status"] == "static_requirements_failed"
+
+    static_real_app = create_app(config=real_config, startup_ready=True)
+    with TestClient(static_real_app) as static_real_client:
+        static_real = static_real_client.get("/api/v1/readiness")
+        assert static_real.status_code == 200
+        assert static_real.json()["status"] == "ready"
+        assert static_real.json()["verification_level"] == "static"
+        assert static_real.json()["model_status"] == "static_preflight_passed"
+        assert static_real.json()["model_verification_status"] == (
+            "static_requirements_passed_model_unverified"
+        )
+        assert static_real.json()["streaming_model_load_verified"] is False
+        with connect(static_real_client) as websocket:
+            websocket.send_json(
+                {"type": "session.start", "request_id": "start", "session_id": "load-check"}
+            )
+            assert websocket.receive_json()["type"] == "session.started"
+            websocket.send_bytes(frame(0))
+            assert {websocket.receive_json()["type"], websocket.receive_json()["type"]} == {
+                "transcript.revision",
+                "audio.ack",
+            }
+        loaded_real = static_real_client.get("/api/v1/readiness")
+        assert loaded_real.json()["verification_level"] == "streaming_model_load"
+        assert loaded_real.json()["model_status"] == "streaming_load_verified"
+        assert loaded_real.json()["model_verification_status"] == "streaming_model_load_verified"
+        assert loaded_real.json()["streaming_model_load_verified"] is True
 
 
 @pytest.mark.parametrize(

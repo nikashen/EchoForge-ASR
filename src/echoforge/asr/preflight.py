@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 import importlib
+import importlib.metadata
+import platform
 from pathlib import Path
 from typing import Any
 
-from .faster_whisper import LOCAL_MODEL_REQUIRED_FILES
+from .faster_whisper import (
+    LOCAL_MODEL_REQUIRED_FILES,
+    LOCAL_MODEL_VOCABULARY_FILES,
+    is_safe_local_model_file,
+)
 from .sherpa_onnx import (
     DECODER_CANDIDATES,
     ENCODER_CANDIDATES,
@@ -30,10 +36,28 @@ def _runtime_check(name: str, required_symbols: tuple[str, ...]) -> tuple[bool, 
     return True, f"{name} import available{suffix}"
 
 
+def _ctranslate2_check() -> tuple[bool, str]:
+    runtime_ok, runtime_detail = _runtime_check("ctranslate2", ("models",))
+    if not runtime_ok:
+        return runtime_ok, runtime_detail
+    try:
+        version = importlib.metadata.version("ctranslate2")
+    except importlib.metadata.PackageNotFoundError:
+        return False, "ctranslate2 distribution metadata is unavailable"
+    if platform.system() == "Windows" and version != "4.5.0":
+        return (
+            False,
+            f"ctranslate2 {version} is unsupported by the Windows verifier contract; expected 4.5.0",
+        )
+    return True, f"ctranslate2 import available (version {version})"
+
+
 def _check_directory(path_value: str | Path | None, label: str) -> tuple[bool, str, Path | None]:
     if path_value is None or not str(path_value).strip():
         return False, f"{label} is required", None
     path = Path(path_value).expanduser()
+    if path.is_symlink():
+        return False, f"{label} must not be a symbolic link: {path}", path
     if not path.is_dir():
         return False, f"{label} directory does not exist: {path}", path
     return True, str(path), path
@@ -63,31 +87,52 @@ def run_preflight(
     normalized = backend.strip().lower()
     checks: list[dict[str, Any]] = []
 
-    def add(name: str, ok: bool, detail: str) -> None:
-        checks.append({"name": name, "ok": ok, "detail": detail})
+    def add(name: str, ok: bool | None, detail: str) -> None:
+        """Record a passed, failed, or deliberately unverified check.
+
+        ``None`` is reserved for facts a static inspection cannot establish.
+        Keeping that state distinct avoids presenting CUDA compatibility as a
+        green check while still allowing the static file/import contract to
+        pass.
+        """
+
+        status = "not_verified" if ok is None else ("passed" if ok else "failed")
+        checks.append({"name": name, "ok": ok, "status": status, "detail": detail})
 
     if normalized == "fake":
         add("backend", True, "deterministic-fake requires no model files")
         return {
             "ok": True,
+            "static_requirements_ok": True,
             "backend": "deterministic-fake",
             "verification_level": "fixture",
             "model_load_verified": False,
+            "runtime_probe_required": False,
             "checks": checks,
         }
     if normalized not in {"sherpa", "sherpa-onnx"}:
         add("backend", False, "backend must be fake or sherpa-onnx")
-        return {"ok": False, "backend": normalized, "checks": checks}
+        return {
+            "ok": False,
+            "static_requirements_ok": False,
+            "backend": normalized,
+            "verification_level": "none",
+            "model_load_verified": False,
+            "runtime_probe_required": True,
+            "checks": checks,
+        }
     if model_type not in {"zipformer", "paraformer", "transducer"}:
         add("model_type", False, "model_type must be zipformer, paraformer, or transducer")
     if provider not in {"cpu", "cuda"}:
         add("provider", False, "provider must be cpu or cuda")
-    elif provider == "cuda":
-        add(
-            "cuda_compatibility",
-            True,
-            "not verified by static preflight; run an end-to-end model load probe",
-        )
+    else:
+        add("provider", True, f"{provider} selected")
+        if provider == "cuda":
+            add(
+                "cuda_compatibility",
+                None,
+                "not verified by static preflight; run an end-to-end model load probe",
+            )
 
     model_ok, model_detail, model_path = _check_directory(model_dir, "model_dir")
     add("model_dir", model_ok, model_detail)
@@ -119,20 +164,40 @@ def run_preflight(
             "faster_whisper", ("WhisperModel",)
         )
         add("faster_whisper_runtime", whisper_runtime_ok, whisper_runtime_detail)
+        ctranslate2_ok, ctranslate2_detail = _ctranslate2_check()
+        add("ctranslate2_runtime", ctranslate2_ok, ctranslate2_detail)
         if verifier_path is not None and verifier_ok:
             for filename in LOCAL_MODEL_REQUIRED_FILES:
-                present = (verifier_path / filename).is_file()
+                present = is_safe_local_model_file(verifier_path, filename)
                 check_name = "verifier_" + filename.replace(".", "_")
                 add(check_name, present, f"{filename} {'present' if present else 'missing'}")
+            vocabulary = next(
+                (
+                    filename
+                    for filename in LOCAL_MODEL_VOCABULARY_FILES
+                    if is_safe_local_model_file(verifier_path, filename)
+                ),
+                None,
+            )
+            add(
+                "verifier_vocabulary",
+                vocabulary is not None,
+                f"{vocabulary} present"
+                if vocabulary is not None
+                else "vocabulary.json/txt missing",
+            )
 
+    static_requirements_ok = all(check["ok"] is not False for check in checks)
     return {
-        "ok": all(bool(check["ok"]) for check in checks),
+        "ok": static_requirements_ok,
+        "static_requirements_ok": static_requirements_ok,
         "backend": "sherpa-onnx",
         "model_type": model_type,
         "provider": provider,
         "dual_pass": dual_pass,
         "verification_level": "static",
         "model_load_verified": False,
+        "runtime_probe_required": True,
         "checks": checks,
     }
 

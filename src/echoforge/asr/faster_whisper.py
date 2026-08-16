@@ -21,10 +21,26 @@ from echoforge.contracts.domain import Hypothesis, RevisionStage
 
 FloatAudio = NDArray[np.float32]
 LOCAL_MODEL_REQUIRED_FILES = ("model.bin", "config.json", "tokenizer.json")
+LOCAL_MODEL_VOCABULARY_FILES = ("vocabulary.json", "vocabulary.txt")
+LOCAL_MODEL_OPTIONAL_FILES = ("preprocessor_config.json",)
+
+
+def is_safe_local_model_file(root: Path, name: str) -> bool:
+    path = root / name
+    if path.is_symlink() or not path.is_file():
+        return False
+    resolved_root = root.resolve()
+    resolved = path.resolve()
+    return resolved_root in resolved.parents and resolved.is_file()
 
 
 def missing_local_model_files(path: Path) -> tuple[str, ...]:
-    return tuple(name for name in LOCAL_MODEL_REQUIRED_FILES if not (path / name).is_file())
+    missing = [
+        name for name in LOCAL_MODEL_REQUIRED_FILES if not is_safe_local_model_file(path, name)
+    ]
+    if not any(is_safe_local_model_file(path, name) for name in LOCAL_MODEL_VOCABULARY_FILES):
+        missing.append("vocabulary.json|vocabulary.txt")
+    return tuple(missing)
 
 
 class FasterWhisperUnavailable(RuntimeError):
@@ -68,7 +84,7 @@ class FasterWhisperFinalizer:
             return
         path = Path(self.model_path).expanduser()
         if not self.allow_download and self._model_factory is None:
-            if not path.is_dir():
+            if path.is_symlink() or not path.is_dir():
                 raise FasterWhisperUnavailable(
                     f"local Whisper model not found: {path}; set allow_download=True explicitly"
                 )
@@ -150,8 +166,11 @@ class FasterWhisperFinalizer:
 
 
 __all__ = [
+    "LOCAL_MODEL_OPTIONAL_FILES",
     "LOCAL_MODEL_REQUIRED_FILES",
+    "LOCAL_MODEL_VOCABULARY_FILES",
     "FasterWhisperFinalizer",
     "FasterWhisperUnavailable",
+    "is_safe_local_model_file",
     "missing_local_model_files",
 ]

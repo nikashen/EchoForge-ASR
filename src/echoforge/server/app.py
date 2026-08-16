@@ -674,27 +674,32 @@ def create_app(
     @app.get("/readiness")
     async def readiness() -> JSONResponse:
         is_fixture = selected_config.backend_name == "deterministic-fake"
-        model_status = (
-            "fixture"
-            if is_fixture
-            else (
-                "static_preflight_failed"
-                if not runtime.startup_ready
-                else (
-                    "streaming_load_verified"
-                    if runtime.streaming_model_load_verified
-                    else "static_preflight_passed"
-                )
-            )
-        )
+        if is_fixture:
+            verification_level = "fixture"
+            model_status = "fixture"
+            model_verification_status = "fixture"
+        elif not runtime.startup_ready:
+            verification_level = "none"
+            model_status = "static_preflight_failed"
+            model_verification_status = "static_requirements_failed"
+        elif runtime.streaming_model_load_verified:
+            verification_level = "streaming_model_load"
+            model_status = "streaming_load_verified"
+            model_verification_status = "streaming_model_load_verified"
+        else:
+            verification_level = "static"
+            model_status = "static_preflight_passed"
+            model_verification_status = "static_requirements_passed_model_unverified"
         payload = {
             "status": "ready" if runtime.ready else "not_ready",
             "service": "echoforge-asr",
             "backend": selected_config.backend_name,
+            "verification_level": verification_level,
             "static_preflight": (
                 "not_required" if is_fixture else ("passed" if runtime.startup_ready else "failed")
             ),
             "model_status": model_status,
+            "model_verification_status": model_verification_status,
             "streaming_model_load_verified": runtime.streaming_model_load_verified,
             "active_sessions": runtime.registry.active_count(),
             "max_sessions": selected_config.max_sessions,

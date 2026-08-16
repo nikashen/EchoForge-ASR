@@ -116,6 +116,16 @@ def _run_serve(args: argparse.Namespace) -> int:
     return 0
 
 
+def _format_preflight_check(check: dict[str, object]) -> str:
+    status = str(check.get("status", "unknown"))
+    label = {
+        "passed": "PASS",
+        "failed": "FAIL",
+        "not_verified": "NOT_VERIFIED",
+    }.get(status, status.upper())
+    return f"{check.get('name', 'unknown')}={label} ({check.get('detail', '')})"
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.command == "smoke":
@@ -146,13 +156,21 @@ def main(argv: list[str] | None = None) -> int:
         if not isinstance(checks, list):
             raise RuntimeError("preflight result has an invalid checks payload")
         ok = bool(result["ok"])
+        verification_level = str(result.get("verification_level", "none"))
+        scope = "fixture check" if verification_level == "fixture" else "static prerequisites"
+        model_suffix = (
+            " (model load unverified)"
+            if ok and verification_level == "static" and not result.get("model_load_verified")
+            else ""
+        )
         print(
             json.dumps(result, ensure_ascii=False, sort_keys=True)
             if args.as_json
-            else "EchoForge static preflight "
-            + ("OK" if ok else "FAILED")
+            else f"EchoForge {scope} "
+            + ("PASSED" if ok else "FAILED")
+            + model_suffix
             + ": "
-            + "; ".join(f"{check['name']}={check['detail']}" for check in checks)
+            + "; ".join(_format_preflight_check(check) for check in checks)
         )
         return 0 if ok else 1
     return 2

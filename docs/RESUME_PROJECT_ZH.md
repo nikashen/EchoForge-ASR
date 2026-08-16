@@ -11,13 +11,13 @@
 - **VAD 不能依赖 chunk 边界**：实现双阈值滞回、speech start/end debounce、跨 chunk 状态、flush/reset/snapshot，使语音起止事件在不同分块方式下保持确定性。
 - **模型运行时与演示环境隔离**：以协议注入 `sherpa-onnx` 流式适配器和 `faster-whisper` 端点验证适配器，模型懒加载且只接受操作者提供的本地目录；fake backend 用于 CI 和 Pages，避免下载权重并保持演示可复现。
 - **真实模型接入先做前置校验**：提供 `echoforge preflight`，在不加载权重的前提下 fail-closed 检查模型目录、关键 ONNX/Whisper 文件和运行时依赖，避免把服务生命周期 ready 误写成模型可推理或质量结论。
-- **实验结果需要可追溯**：提供固定种子的噪声/信噪比和电话信道扰动、中文归一化、编辑计数及冻结 manifest 校验；证据不完整时返回 `not_yet_evaluated`，而不是输出看似完整的结论。
+- **实验结果需要可追溯**：提供固定种子的噪声/信噪比和电话信道扰动、中文归一化、编辑计数及冻结 manifest 校验；下载 receipt、双层安全解压 marker、完整 split 选择、独立 warm-up、模型权重许可确认、模型/环境哈希与逐行时延形成 fail-closed 证据链，证据不完整时返回 `not_yet_evaluated`。
 - **从算法状态到可观察产品界面**：浏览器通过 AudioWorklet 采集并重采样到 16 kHz，支持 Mic/File/确定性 Demo 三种来源；VoiceLab 展示波形、VAD、修订时间线、热词能力状态和 JSON/SRT/VTT 导出。
 
 ## 可验证结果
 
-- 本地测试套件：**119 tests passed**。
-- CI 覆盖 Python 3.11/3.12，执行 pytest、ruff、mypy、compileall、wheel smoke 和 Pages 构建。
+- 本地测试套件：**264 tests passed**。
+- CI 覆盖 Linux Python 3.10/3.11/3.12，并增加 Windows verifier/CT2 4.5.0 合约任务；执行 pytest、ruff、mypy、compileall、wheel smoke 和 Pages 构建。
 - GitHub Pages 已提供无需模型和 API key 的确定性演示，可复现协议状态、修订链、repair diff、时间线和证据边界。
 
 ## 简历 Bullet（可直接使用）
@@ -26,7 +26,7 @@
 - 实现跨 chunk 确定性双阈值 VAD 与 debounce 状态机，串联流式 decoder 和端点 verifier，建立 `partial -> stream_final -> dual_pass_final` 单调修订链及字符级纠错 diff。
 - 以依赖注入方式接入 sherpa-onnx 与 faster-whisper，模型懒加载、权重不入库；提供 deterministic fake backend，使 CI 与 GitHub Pages 在无模型环境下仍可复现完整交互链路。
 - 开发 FastAPI/WebSocket 服务和 VoiceLab 前端，支持真实麦克风/文件流、VAD telemetry、热词能力协商、Session Timeline 以及 JSON/SRT/VTT 导出。
-- 建立固定种子扰动、中文文本归一化、编辑计数和冻结 manifest 的 fail-closed 评估流程；以 119 项测试、双版本 Python CI、Pages 构建和真实模型接入的静态 preflight 机制验证工程可交付性。
+- 建立固定种子扰动、严格 JSON/WAV 校验、下载/解压/音频/模型哈希链和 speaker-disjoint 完整 split 的 fail-closed 评估流程；以 264 项测试、三版本 Linux CI、Windows verifier 合约、Pages 构建和真实双阶段 smoke 验证工程可交付性。
 
 ## 面试深挖点
 

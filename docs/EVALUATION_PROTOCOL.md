@@ -1,36 +1,50 @@
 # Evaluation Protocol v1
 
-Metrics are authorized only for a frozen, speaker-disjoint manifest. The report
-must record source URLs and licenses, every audio SHA-256, split assignment,
-model revision and file hashes, package versions, normalization rules, device,
-warm-up policy, and latency clock definitions.
+Metrics are authorized only for a frozen, speaker-disjoint manifest derived
+from a hash-bound extraction of one complete dev or test split. Authorized
+preparation forbids extraction, speaker, and utterance limits and requires a
+canonical protocol ID. The runner additionally requires CPU execution,
+separate warm-up audio, immutable model revisions, artifact hashes, and an
+explicitly reviewed weight-license/source record for every active model.
 
-The checked-in evaluator currently reports **normalized** Chinese CER with
-substitutions, deletions, insertions, and reference length. It does not emit a
-raw (pre-normalization) CER column; any raw-vs-normalized comparison must be
-generated separately and recorded in the report. The available deterministic
-audio primitives are fixed-seed additive noise at a requested SNR and a 16 kHz
-telephone-channel band-limit/resampling transform. Gain/resampling helpers
-exist in the audio package, but there is no checked-in benchmark runner that
-combines them, and reverberation is not implemented. Do not present the Arena
-fixture as a measured robustness result.
+`scripts/run_manifest_asr.py` consumes an explicitly unfrozen local manifest
+and atomically creates a no-overwrite result. Before inference it validates the
+dataset/extraction selection, canonical IDs and relative paths, duplicate audio
+hashes, normalized references, strict complete 16 kHz mono PCM16LE decoding,
+model files, and provenance. It hashes model artifacts before adapter creation
+and again after inference. A model mutation, verifier degradation, truncated
+WAV, ambiguous JSON, or evidence publication race aborts the run.
 
-When a benchmark is built, robustness conditions must be paired with clean
-samples and must record the transform seed and parameters. RTF is total model
-compute time divided by active audio duration; first-partial and
-endpoint-to-final latency are reported separately.
+The checked-in evaluator independently recomputes **normalized** Chinese CER
+substitutions, deletions, insertions, reference length, and hypothesis length.
+It validates authorization/frozen state; exact normalization version; dataset,
+extraction and model provenance; real-backend whitelist; decoder settings;
+artifact labels, plausible sizes and hashes; package/device/warm-up/clock
+evidence; final-stage/text consistency; per-row timing arithmetic; and runtime
+totals. Invalid, incomplete, limited, fake, or unauthorized evidence returns
+`status: not_yet_evaluated` with no numeric score.
 
-No threshold, decoder setting, or model choice may be tuned on the frozen Test
-split. Incomplete manifests or missing sufficient statistics fail closed.
+An evaluated aggregate report contains CER sufficient statistics and sanitized
+dataset/model/artifact/package/device/warm-up/timing evidence plus the frozen
+manifest hash. It excludes row text and audio paths. The private frozen
+manifest retains every row ID, speaker/split, audio SHA-256, reference,
+hypothesis, revision stage and timing needed for independent recomputation.
 
-`scripts/evaluate_manifest.py` recomputes aggregate counts from row-level
-reference/hypothesis pairs. It validates the schema, frozen flag, unique IDs,
-and 64-character audio SHA-256 values before emitting normalized CER. It does
-not independently verify every provenance field listed above, so a release
-review must check those fields as well. Invalid or empty evidence produces
-`status: not_yet_evaluated` and no numeric score.
+Runner timing is offline, unpaced, sequential `time.perf_counter` wall time.
+`utterance_rtf` is sequential ASR processing wall time divided by decoded audio
+duration. `first_partial_wall_ms` starts at the first immediate decoder feed and
+is **not** real-time playback TTFT. Endpoint-to-final starts immediately before
+streaming finalize and includes the optional endpoint verifier. These local
+observations are not production latency or SLA claims.
 
-Interactive VoiceLab values are single-session observations. Percentiles may
-appear only in a frozen report. Endpoint-to-final latency begins when an
-explicit flush/VAD endpoint is committed and ends when the final revision is
-available; it is not a production SLA.
+The evaluator emits normalized CER only; raw-vs-normalized comparisons must be
+generated separately. Fixed-seed additive noise/SNR and telephone-channel
+primitives exist, but the current manifest runner accepts clean WAV input and
+does not yet apply those perturbations or reverberation. Robustness conditions
+must eventually be paired with clean samples and record transform seeds and
+parameters. Do not present the Arena fixture as a measured result.
+
+No threshold, decoder setting, or model choice may be tuned on a frozen test
+split. Software licenses do not imply model-weight licenses: if the actual
+weights lack independently reviewed terms, keep the run unauthorized and do
+not publish CER, RTF, latency, robustness, accent, or production claims.

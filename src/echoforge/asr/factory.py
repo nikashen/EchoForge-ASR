@@ -88,7 +88,7 @@ def build_backend_factories(
         details = "; ".join(
             str(check.get("detail", "failed"))
             for check in checks
-            if isinstance(check, dict) and not check.get("ok", False)
+            if isinstance(check, dict) and check.get("ok") is False
         )
         raise ValueError(f"backend preflight failed: {details or 'unknown prerequisite failure'}")
     config = SherpaOnnxConfig(model_dir=Path(model_dir), model_type=model_type, provider=provider)
@@ -105,7 +105,9 @@ def build_backend_factories(
             "streaming_model_dir": str(Path(model_dir).expanduser()),
             "model_type": model_type,
             "verifier": "faster-whisper" if dual_pass else "disabled",
-            "preflight": "static_passed",
+            "preflight": "static_requirements_passed",
+            "verification_level": str(preflight["verification_level"]),
+            "model_load_verified": str(bool(preflight["model_load_verified"])).lower(),
         },
-        static_preflight_ok=True,
+        static_preflight_ok=bool(preflight["static_requirements_ok"]),
     )
